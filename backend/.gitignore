@@ -1,0 +1,11 @@
+__pycache__/
+env/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.sqlite3
+*.log
+*.env
+faiss_index
+    
