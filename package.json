@@ -9,8 +9,11 @@
     "axios": "^0.21.1",
     "react": "^18.1.0",
     "react-dom": "^18.1.0",
-    "react-router-dom": "^5.1.0",
+    "react-router-dom": "^6.0.0",  // Optionally, upgrade to v6
     "react-scripts": "^4.0.3"
+  },
+  "devDependencies": {
+    "gh-pages": "^4.0.0" // Add gh-pages here
   },
   "scripts": {
     "start": "react-scripts start",
