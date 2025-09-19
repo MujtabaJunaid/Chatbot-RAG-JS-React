@@ -22,7 +22,7 @@ class QueryRequest(BaseModel):
     question: str
 
 def get_embedding_via_hf(text):
-    url = "https://api-inference.huggingface.co/models/bert-base-uncased"
+    url =  "https://api-inference.huggingface.co/models/google-bert/bert-base-uncased"
     headers = {"Authorization": f"Bearer {hf_api_key}"}
     response = requests.post(url, headers=headers, json={"inputs": text})
     if response.status_code != 200:
