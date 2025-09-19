@@ -1,73 +1,33 @@
-import os
-import pickle
+import faiss
 import numpy as np
-from typing import List, Optional
 from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from huggingface_hub import InferenceClient
 from groq import Groq
+from huggingface_hub import InferenceClient
 
 app = FastAPI()
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
-VECTOR_FILE = "vector_pages_33_to_801.pkl"
+class QueryRequest(BaseModel):
+    question: str
 
 faiss_index = None
 texts = None
 hf_client = None
 groq_client = None
 
-class QueryRequest(BaseModel):
-    question: str
-
-def get_embedding_via_hf(text: str):
-    try:
-        embedding = hf_client.feature_extraction(
-            text,
-            model="sentence-transformers/all-MiniLM-L6-v2"
-        )
-        return np.array(embedding, dtype="float32")
-    except Exception as e:
-        raise RuntimeError(f"Hugging Face API error: {e}")
+def get_embedding_via_hf(text):
+    return np.array(hf_client.feature_extraction(text))
 
 @app.on_event("startup")
 def startup_load():
     global faiss_index, texts, hf_client, groq_client
-    if not os.path.exists(VECTOR_FILE):
-        raise RuntimeError(f"{VECTOR_FILE} not found")
-    with open(VECTOR_FILE, "rb") as f:
-        vector_store = pickle.load(f)
-    possible_index_keys = ["index", "faiss_index", "idx"]
-    possible_text_keys = ["docs", "texts", "documents"]
-    idx_key = next((k for k in possible_index_keys if k in vector_store), None)
-    text_key = next((k for k in possible_text_keys if k in vector_store), None)
-    if idx_key is None or text_key is None:
-        available = list(vector_store.keys()) if isinstance(vector_store, dict) else []
-        raise RuntimeError(f"Vector store format invalid. Available keys: {available}")
-    faiss_index = vector_store[idx_key]
-    texts = vector_store[text_key]
-    if faiss_index is None:
-        raise RuntimeError("Loaded faiss index is None.")
-    if texts is None or not isinstance(texts, (list, tuple)):
-        raise RuntimeError("Loaded texts/docs is missing or not a list/tuple.")
-    hf_api_key = os.getenv("hf_api_key")
-    if not hf_api_key:
-        raise RuntimeError("hf_api_key environment variable not set")
-    hf_client = InferenceClient(api_key=hf_api_key)
-    groq_api_key = os.getenv("groq_api_key")
-    if not groq_api_key:
-        raise RuntimeError("groq_api_key environment variable not set")
-    groq_client = Groq(api_key=groq_api_key)
-
-@app.get("/")
-def root():
-    return {"message": "Backend running"}
-
-@app.get("/status/")
-def status():
-    ready = faiss_index is not None and texts is not None and hf_client is not None and groq_client is not None
-    return {"ready": ready}
+    hf_client = InferenceClient(model="sentence-transformers/all-MiniLM-L6-v2")
+    groq_client = Groq(api_key="YOUR_GROQ_API_KEY")
+    texts = ["Document 1 content", "Document 2 content", "Document 3 content"]
+    dim = 384
+    faiss_index = faiss.IndexFlatL2(dim)
+    embeddings = np.vstack([get_embedding_via_hf(t) for t in texts]).astype("float32")
+    faiss_index.add(embeddings)
 
 @app.post("/ask/")
 def ask(request: QueryRequest):
@@ -76,15 +36,12 @@ def ask(request: QueryRequest):
     if not request.question or not request.question.strip():
         raise HTTPException(status_code=400, detail="Empty question provided.")
     try:
-        q_emb = get_embedding_via_hf(request.question).reshape(1, -1)
+        q_emb = get_embedding_via_hf(request.question).reshape(1, -1).astype("float32")
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Embeddings API error: {e}")
     k = 3
     try:
-        nq = q_emb.shape[0]
-        distances = np.empty((nq, k), dtype='float32')
-        labels = np.empty((nq, k), dtype='int64')
-        faiss_index.search(nq, q_emb, k, distances, labels)
+        distances, labels = faiss_index.search(q_emb, k)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"FAISS search failed: {e}")
     hits = []
