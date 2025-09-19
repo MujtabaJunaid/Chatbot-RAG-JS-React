@@ -8,5 +8,5 @@ python-multipart==0.0.5
 groq==0.31.1
 PyPDF2==3.0.1
 tqdm==4.66.1
-numpy==1.23.5
+numpy==1.24.4
 
