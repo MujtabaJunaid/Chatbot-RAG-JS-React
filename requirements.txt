@@ -1,5 +1,6 @@
-numpy==2.0.1
-faiss-cpu==1.7.3
+# requirements.txt
+numpy>=2.0.0
+faiss-cpu>=1.8.0  # Try the latest version
 groq==0.31.1
 fastapi==0.68.0
 uvicorn==0.15.0
