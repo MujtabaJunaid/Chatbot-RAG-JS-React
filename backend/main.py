@@ -82,13 +82,13 @@ def ask(request: QueryRequest):
     k = 3
     try:
         distances = np.empty((1, k), dtype=np.float32)
-        indices = np.empty((1, k), dtype=np.int64)
-        faiss_index.search(q_emb, k, distances, indices)
+        labels = np.empty((1, k), dtype=np.int64)
+        faiss_index.search(q_emb, k, distances, labels)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"FAISS search failed: {e}")
     hits = []
     try:
-        for idx in indices[0]:
+        for idx in labels[0]:
             if idx == -1:
                 continue
             if 0 <= int(idx) < len(texts):
