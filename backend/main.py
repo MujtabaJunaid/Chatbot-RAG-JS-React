@@ -34,49 +34,40 @@ vector_store = None
 class QueryRequest(BaseModel):
     question: str
 
-def get_embedding(text: str):
-    response = requests.post(HF_URL, headers=HEADERS, json={"inputs": text})
+def get_embeddings(texts):
+    response = requests.post(HF_URL, headers=HEADERS, json={"inputs": texts})
     if response.status_code != 200:
         raise HTTPException(status_code=500, detail=f"HuggingFace error: {response.text}")
-    return response.json()[0]
+    return response.json()
 
 @app.post("/upload_pdf/")
 async def upload_pdf(file: UploadFile = File(...)):
     if not file.filename.endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files allowed")
-
     reader = PdfReader(file.file)
     text = ""
     for page in reader.pages:
         text += page.extract_text() or ""
-
     splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
     chunks = splitter.split_text(text)
-
     global vector_store
     docs = [Document(page_content=chunk) for chunk in chunks]
-
-    embeddings = [get_embedding(chunk) for chunk in chunks]
+    embeddings = get_embeddings(chunks)
     vector_store = FAISS.from_embeddings(embeddings, docs)
-
     return {"message": "PDF processed and stored in FAISS"}
 
 @app.post("/ask/")
 async def ask_question(request: QueryRequest):
     if vector_store is None:
         raise HTTPException(status_code=400, detail="Upload a PDF first")
-
     docs = vector_store.similarity_search(request.question, k=3)
     context = "\n".join([d.page_content for d in docs])
-
     messages = [
         {"role": "system", "content": "You are a helpful assistant for answering questions based on documents."},
         {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {request.question}"}
     ]
-
     chat_completion = groq_client.chat.completions.create(
         model="llama-3.1-8b-instant",
         messages=messages
     )
-
     return {"answer": chat_completion.choices[0].message.content}
