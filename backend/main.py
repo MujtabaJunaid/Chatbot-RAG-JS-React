@@ -54,7 +54,7 @@ def startup_load():
     hf_api_key = os.getenv("hf_api_key")
     if not hf_api_key:
         raise RuntimeError("hf_api_key environment variable not set")
-    hf_client = InferenceClient(provider="hf-inference",api_key=hf_api_key)
+    hf_client = InferenceClient(api_key=hf_api_key)
     groq_api_key = os.getenv("groq_api_key")
     if not groq_api_key:
         raise RuntimeError("groq_api_key environment variable not set")
@@ -81,9 +81,7 @@ def ask(request: QueryRequest):
         raise HTTPException(status_code=502, detail=f"Embeddings API error: {e}")
     k = 3
     try:
-        distances = np.zeros((1, k), dtype=np.float32)
-        indices = np.zeros((1, k), dtype=np.int64)
-        faiss_index.search(q_emb, k, distances, indices)
+        distances, indices = faiss_index.search(q_emb, k)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"FAISS search failed: {e}")
     hits = []
