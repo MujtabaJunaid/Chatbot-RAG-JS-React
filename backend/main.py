@@ -8,8 +8,6 @@ from pydantic import BaseModel
 from huggingface_hub import InferenceClient
 from groq import Groq
 
-import faiss
-
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
@@ -78,14 +76,12 @@ def ask(request: QueryRequest):
     if not request.question or not request.question.strip():
         raise HTTPException(status_code=400, detail="Empty question provided.")
     try:
-        q_emb = get_embedding_via_hf(request.question).reshape(1, -1)
+        q_emb = get_embedding_via_hf(request.question).reshape(1, -1).astype("float32")
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Embeddings API error: {e}")
     k = 3
     try:
-        distances = np.zeros((1, k), dtype=np.float32)
-        indices = np.zeros((1, k), dtype=np.int64)
-        faiss_index.search(q_emb.astype("float32"), k, distances, indices)
+        distances, indices = faiss_index.search(q_emb, k)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"FAISS search failed: {e}")
     hits = []
