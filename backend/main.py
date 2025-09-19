@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from langchain.vectorstores import FAISS
 from langchain.docstore.document import Document
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.text_splitter import CharacterTextSplitter as RecursiveCharacterTextSplitter
 from pypdf import PdfReader
 from groq import Groq
 
