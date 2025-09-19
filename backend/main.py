@@ -134,7 +134,7 @@ def ask(request: QueryRequest):
         choice = completion.choices[0]
         content = getattr(choice, "message", None)
         if content:
-            answer_text = getattr(content, "content, None)
+            answer_text = getattr(content, "content", None)
         else:
             answer_text = getattr(choice, "text", None)
         if not answer_text and isinstance(completion, dict):
