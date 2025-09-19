@@ -51,7 +51,7 @@ def get_similar_docs(query, faiss_index):
 def fetch_groq_answer(system_prompt, user_prompt):
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {
-        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Authorization": f"Bearer {groq_api_key}",
         "Content-Type": "application/json"
     }
     payload = {
