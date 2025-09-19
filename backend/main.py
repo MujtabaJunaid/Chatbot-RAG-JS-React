@@ -30,6 +30,7 @@ GROQ_API_KEY = os.getenv("groq_api_key")
 groq_client = Groq(api_key=GROQ_API_KEY)
 
 vector_store = None
+processing_done = False
 
 class QueryRequest(BaseModel):
     question: str
@@ -41,7 +42,7 @@ def get_embeddings(texts):
     return response.json()
 
 def process_pdf(file_path):
-    global vector_store
+    global vector_store, processing_done
     reader = PdfReader(file_path)
     text = ""
     for page in reader.pages:
@@ -51,21 +52,28 @@ def process_pdf(file_path):
     docs = [Document(page_content=chunk) for chunk in chunks]
     embeddings = get_embeddings(chunks)
     vector_store = FAISS.from_embeddings(embeddings, docs)
+    processing_done = True
 
 @app.post("/upload_pdf/")
 async def upload_pdf(file: UploadFile = File(...), background_tasks: BackgroundTasks = None):
+    global processing_done
     if not file.filename.endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files allowed")
+    processing_done = False
     file_path = f"/tmp/{file.filename}"
     with open(file_path, "wb") as f:
         f.write(await file.read())
     background_tasks.add_task(process_pdf, file_path)
-    return {"message": "PDF received, processing in background"}
+    return {"message": "PDF received, processing started"}
+
+@app.get("/status/")
+async def check_status():
+    return {"ready": processing_done}
 
 @app.post("/ask/")
 async def ask_question(request: QueryRequest):
-    if vector_store is None:
-        raise HTTPException(status_code=400, detail="Upload a PDF first and wait for processing to finish")
+    if vector_store is None or not processing_done:
+        raise HTTPException(status_code=400, detail="PDF not processed yet")
     docs = vector_store.similarity_search(request.question, k=3)
     context = "\n".join([d.page_content for d in docs])
     messages = [
