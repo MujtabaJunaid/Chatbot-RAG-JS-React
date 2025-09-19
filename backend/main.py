@@ -9,7 +9,7 @@ from huggingface_hub import InferenceClient
 from groq import Groq
 
 app = FastAPI()
-app.add_middleware(CORSMiddleware, allow_origins=[""], allow_credentials=True, allow_methods=[""], allow_headers=["*"])
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 VECTOR_FILE = "vector_pages_33_to_801.pkl"
 
@@ -19,104 +19,103 @@ hf_client = None
 groq_client = None
 
 class QueryRequest(BaseModel):
-question: str
+    question: str
 
 def get_embedding_via_hf(text: str):
-try:
-embedding = hf_client.feature_extraction(
-text,
-model="sentence-transformers/all-MiniLM-L6-v2"
-)
-return np.array(embedding, dtype="float32")
-except Exception as e:
-raise RuntimeError(f"Hugging Face API error: {e}")
+    try:
+        embedding = hf_client.feature_extraction(
+            text,
+            model="sentence-transformers/all-MiniLM-L6-v2"
+        )
+        return np.array(embedding, dtype="float32")
+    except Exception as e:
+        raise RuntimeError(f"Hugging Face API error: {e}")
 
 @app.on_event("startup")
 def startup_load():
-global faiss_index, texts, hf_client, groq_client
-if not os.path.exists(VECTOR_FILE):
-raise RuntimeError(f"{VECTOR_FILE} not found")
-with open(VECTOR_FILE, "rb") as f:
-vector_store = pickle.load(f)
-possible_index_keys = ["index", "faiss_index", "idx"]
-possible_text_keys = ["docs", "texts", "documents"]
-idx_key = next((k for k in possible_index_keys if k in vector_store), None)
-text_key = next((k for k in possible_text_keys if k in vector_store), None)
-if idx_key is None or text_key is None:
-available = list(vector_store.keys()) if isinstance(vector_store, dict) else []
-raise RuntimeError(f"Vector store format invalid. Available keys: {available}")
-faiss_index = vector_store[idx_key]
-texts = vector_store[text_key]
-if faiss_index is None:
-raise RuntimeError("Loaded faiss index is None.")
-if texts is None or not isinstance(texts, (list, tuple)):
-raise RuntimeError("Loaded texts/docs is missing or not a list/tuple.")
-hf_api_key = os.getenv("hf_api_key")
-if not hf_api_key:
-raise RuntimeError("hf_api_key environment variable not set")
-hf_client = InferenceClient(api_key=hf_api_key)
-groq_api_key = os.getenv("groq_api_key")
-if not groq_api_key:
-raise RuntimeError("groq_api_key environment variable not set")
-groq_client = Groq(api_key=groq_api_key)
+    global faiss_index, texts, hf_client, groq_client
+    if not os.path.exists(VECTOR_FILE):
+        raise RuntimeError(f"{VECTOR_FILE} not found")
+    with open(VECTOR_FILE, "rb") as f:
+        vector_store = pickle.load(f)
+    possible_index_keys = ["index", "faiss_index", "idx"]
+    possible_text_keys = ["docs", "texts", "documents"]
+    idx_key = next((k for k in possible_index_keys if k in vector_store), None)
+    text_key = next((k for k in possible_text_keys if k in vector_store), None)
+    if idx_key is None or text_key is None:
+        available = list(vector_store.keys()) if isinstance(vector_store, dict) else []
+        raise RuntimeError(f"Vector store format invalid. Available keys: {available}")
+    faiss_index = vector_store[idx_key]
+    texts = vector_store[text_key]
+    if faiss_index is None:
+        raise RuntimeError("Loaded faiss index is None.")
+    if texts is None or not isinstance(texts, (list, tuple)):
+        raise RuntimeError("Loaded texts/docs is missing or not a list/tuple.")
+    hf_api_key = os.getenv("hf_api_key")
+    if not hf_api_key:
+        raise RuntimeError("hf_api_key environment variable not set")
+    hf_client = InferenceClient(api_key=hf_api_key)
+    groq_api_key = os.getenv("groq_api_key")
+    if not groq_api_key:
+        raise RuntimeError("groq_api_key environment variable not set")
+    groq_client = Groq(api_key=groq_api_key)
 
 @app.get("/")
 def root():
-return {"message": "Backend running"}
+    return {"message": "Backend running"}
 
 @app.get("/status/")
 def status():
-ready = faiss_index is not None and texts is not None and hf_client is not None and groq_client is not None
-return {"ready": ready}
+    ready = faiss_index is not None and texts is not None and hf_client is not None and groq_client is not None
+    return {"ready": ready}
 
 @app.post("/ask/")
 def ask(request: QueryRequest):
-if faiss_index is None or texts is None or hf_client is not None or groq_client is None:
-raise HTTPException(status_code=503, detail="Server resources not loaded yet.")
-if not request.question or not request.question.strip():
-raise HTTPException(status_code=400, detail="Empty question provided.")
-try:
-q_emb = get_embedding_via_hf(request.question).reshape(1, -1).astype("float32")
-except Exception as e:
-raise HTTPException(status_code=502, detail=f"Embeddings API error: {e}")
-k = 3
-try:
-distances = np.empty((1, k), dtype=np.float32)
-indices = np.empty((1, k), dtype=np.int64)
-faiss_index.search(q_emb, k, distances, indices)
-except Exception as e:
-raise HTTPException(status_code=500, detail=f"FAISS search failed: {e}")
-hits = []
-try:
-for idx in indices[0]:
-if idx == -1:
-continue
-if 0 <= int(idx) < len(texts):
-hits.append(texts[int(idx)])
-except Exception as e:
-raise HTTPException(status_code=500, detail=f"Failed to read search indices: {e}")
-context = "\n".join(hits) if hits else ""
-messages = [
-{"role": "system", "content": "You are a helpful assistant. Use the provided context to answer questions."},
-{"role": "user", "content": f"Context:\n{context}\n\nQuestion: {request.question}"}
-]
-try:
-completion = groq_client.chat.completions.create(model="llama-3.1-8b-instant", messages=messages)
-except Exception as e:
-raise HTTPException(status_code=502, detail=f"Groq chat completion failed: {e}")
-answer_text = None
-try:
-choice = completion.choices[0]
-content = getattr(choice, "message", None)
-if content:
-answer_text = getattr(content, "content", None)
-else:
-answer_text = getattr(choice, "text", None)
-if not answer_text and isinstance(completion, dict):
-answer_text = completion.get("choices", [{}])[0].get("message", {}).get("content")
-except Exception:
-pass
-if not answer_text:
-raise HTTPException(status_code=502, detail="Failed to parse LLM response")
-return {"answer": answer_text}
-
+    if faiss_index is None or texts is None or hf_client is None or groq_client is None:
+        raise HTTPException(status_code=503, detail="Server resources not loaded yet.")
+    if not request.question or not request.question.strip():
+        raise HTTPException(status_code=400, detail="Empty question provided.")
+    try:
+        q_emb = get_embedding_via_hf(request.question).reshape(1, -1).astype("float32")
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Embeddings API error: {e}")
+    k = 3
+    try:
+        distances = np.empty((1, k), dtype=np.float32)
+        indices = np.empty((1, k), dtype=np.int64)
+        faiss_index.search(q_emb, k, distances, indices)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"FAISS search failed: {e}")
+    hits = []
+    try:
+        for idx in indices[0]:
+            if idx == -1:
+                continue
+            if 0 <= int(idx) < len(texts):
+                hits.append(texts[int(idx)])
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read search indices: {e}")
+    context = "\n".join(hits) if hits else ""
+    messages = [
+        {"role": "system", "content": "You are a helpful assistant. Use the provided context to answer questions."},
+        {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {request.question}"}
+    ]
+    try:
+        completion = groq_client.chat.completions.create(model="llama-3.1-8b-instant", messages=messages)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Groq chat completion failed: {e}")
+    answer_text = None
+    try:
+        choice = completion.choices[0]
+        content = getattr(choice, "message", None)
+        if content:
+            answer_text = getattr(content, "content", None)
+        else:
+            answer_text = getattr(choice, "text", None)
+        if not answer_text and isinstance(completion, dict):
+            answer_text = completion.get("choices", [{}])[0].get("message", {}).get("content")
+    except Exception:
+        pass
+    if not answer_text:
+        raise HTTPException(status_code=502, detail="Failed to parse LLM response")
+    return {"answer": answer_text}
