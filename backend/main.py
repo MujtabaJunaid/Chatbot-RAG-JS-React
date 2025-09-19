@@ -31,6 +31,18 @@ def get_embedding_via_hf(text: str):
     except Exception as e:
         raise RuntimeError(f"Hugging Face API error: {e}")
 
+def faiss_search(index, query_embedding, k):
+    try:
+        return index.search(query_embedding, k)
+    except TypeError:
+        try:
+            distances = np.zeros((query_embedding.shape[0], k), dtype=np.float32)
+            indices = np.zeros((query_embedding.shape[0], k), dtype=np.int64)
+            index.search(query_embedding, k, distances, indices)
+            return distances, indices
+        except Exception as e:
+            raise RuntimeError(f"FAISS search failed with both methods: {e}")
+
 @app.on_event("startup")
 def startup_load():
     global faiss_index, texts, hf_client, groq_client
@@ -54,7 +66,10 @@ def startup_load():
     hf_api_key = os.getenv("hf_api_key")
     if not hf_api_key:
         raise RuntimeError("hf_api_key environment variable not set")
-    hf_client = InferenceClient(api_key=hf_api_key)
+    hf_client = InferenceClient(
+        provider="hf-inference",
+        api_key=hf_api_key,
+    )
     groq_api_key = os.getenv("groq_api_key")
     if not groq_api_key:
         raise RuntimeError("groq_api_key environment variable not set")
@@ -76,41 +91,14 @@ def ask(request: QueryRequest):
     if not request.question or not request.question.strip():
         raise HTTPException(status_code=400, detail="Empty question provided.")
     try:
-        q_emb = get_embedding_via_hf(request.question).reshape(1, -1).astype("float32")
+        q_emb = get_embedding_via_hf(request.question).reshape(1, -1)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Embeddings API error: {e}")
     k = 3
     try:
-        # Debug the FAISS index method signature
-        print(f"FAISS index type: {type(faiss_index)}")
-        print(f"Available methods: {[method for method in dir(faiss_index) if not method.startswith('_')]}")
-        
-        # Try the modern approach first
-        try:
-            distances, indices = faiss_index.search(q_emb, k)
-            print("Modern syntax worked")
-        except Exception as modern_error:
-            print(f"Modern failed: {modern_error}")
-            # Try legacy approach
-            try:
-                distances = np.empty((1, k), dtype=np.float32)
-                indices = np.empty((1, k), dtype=np.int64)
-                faiss_index.search(q_emb, k, distances, indices)
-                print("Legacy syntax worked")
-            except Exception as legacy_error:
-                print(f"Legacy failed: {legacy_error}")
-                # Try with ctypes
-                try:
-                    distances = np.empty((1, k), dtype=np.float32)
-                    indices = np.empty((1, k), dtype=np.int64)
-                    faiss_index.search(q_emb, k, distances.ctypes.data, indices.ctypes.data)
-                    print("Ctypes syntax worked")
-                except Exception as ctypes_error:
-                    raise HTTPException(status_code=500, detail=f"All FAISS approaches failed. Modern: {modern_error}, Legacy: {legacy_error}, Ctypes: {ctypes_error}")
-                    
+        distances, indices = faiss_search(faiss_index, q_emb, k)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"FAISS search failed: {e}")
-    
     hits = []
     try:
         for idx in indices[0]:
