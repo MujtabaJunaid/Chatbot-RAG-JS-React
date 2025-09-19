@@ -5,7 +5,7 @@ from typing import List, Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import requests
+from huggingface_hub import InferenceClient
 from groq import Groq
 
 app = FastAPI()
@@ -15,28 +15,28 @@ VECTOR_FILE = "vector_pages_33_to_801.pkl"
 
 faiss_index = None
 texts = None
-hf_api_key = None
+hf_client = None
 groq_client = None
 
 class QueryRequest(BaseModel):
     question: str
 
 def get_embedding_via_hf(text):
-    url = "https://api-inference.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2"
-    headers = {"Authorization": f"Bearer {hf_api_key}"}
-    payload = {
-        "inputs": text,
-        "options": {"wait_for_model": True}
-    }
-    response = requests.post(url, headers=headers, json=payload)
-    if response.status_code != 200:
-        raise RuntimeError(f"Hugging Face API error: {response.status_code} - {response.text}")
-    embeddings = response.json()
-    return np.array(embeddings, dtype="float32")
+    try:
+        result = hf_client.sentence_similarity(
+            {
+                "source_sentence": text,
+                "sentences": [text]
+            },
+            model="sentence-transformers/all-MiniLM-L6-v2",
+        )
+        return np.array(result, dtype="float32")
+    except Exception as e:
+        raise RuntimeError(f"Hugging Face API error: {e}")
 
 @app.on_event("startup")
 def startup_load():
-    global faiss_index, texts, hf_api_key, groq_client
+    global faiss_index, texts, hf_client, groq_client
     if not os.path.exists(VECTOR_FILE):
         raise RuntimeError(f"{VECTOR_FILE} not found")
     with open(VECTOR_FILE, "rb") as f:
@@ -57,6 +57,10 @@ def startup_load():
     hf_api_key = os.getenv("hf_api_key")
     if not hf_api_key:
         raise RuntimeError("hf_api_key environment variable not set")
+    hf_client = InferenceClient(
+        provider="hf-inference",
+        api_key=hf_api_key,
+    )
     groq_api_key = os.getenv("groq_api_key")
     if not groq_api_key:
         raise RuntimeError("groq_api_key environment variable not set")
@@ -68,12 +72,12 @@ def root():
 
 @app.get("/status/")
 def status():
-    ready = faiss_index is not None and texts is not None and hf_api_key is not None and groq_client is not None
+    ready = faiss_index is not None and texts is not None and hf_client is not None and groq_client is not None
     return {"ready": ready}
 
 @app.post("/ask/")
 def ask(request: QueryRequest):
-    if faiss_index is None or texts is None or hf_api_key is None or groq_client is None:
+    if faiss_index is None or texts is None or hf_client is None or groq_client is None:
         raise HTTPException(status_code=503, detail="Server resources not loaded yet.")
     if not request.question or not request.question.strip():
         raise HTTPException(status_code=400, detail="Empty question provided.")
