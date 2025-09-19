@@ -20,7 +20,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-client = Groq(api_key=os.environ.get("groq_api_key"))
+client = Groq(api_key=os.environ.get("GROQ_API_KEY"))  # Fixed the key name
 
 
 class QueryRequest(BaseModel):
@@ -28,7 +28,8 @@ class QueryRequest(BaseModel):
 
 FAISS_INDEX_PATH = "faiss_index"
 PDF_FILE_PATH = "Income Tax Ordinance.pdf"
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+GROQ_API_KEY = os.environ.get("groq_api_key")
+
 
 def load_pdf_to_text(pdf_file_path):
     loader = PyPDFLoader(pdf_file_path)
@@ -41,8 +42,9 @@ def create_embeddings(docs):
 def build_faiss_index():
     if not os.path.exists(FAISS_INDEX_PATH):
         docs = load_pdf_to_text(PDF_FILE_PATH)
+        print(f"Loaded {len(docs)} documents")  # Debugging line
         faiss_index = create_embeddings(docs)
-        faiss.write_index(faiss_index.index, FAISS_INDEX_PATH)
+        faiss.write_index(faiss_index.index, FAISS_INDEX_PATH)  # Make sure `faiss_index.index` is valid
     else:
         faiss_index = FAISS.load_local(FAISS_INDEX_PATH, OpenAIEmbeddings())
     return faiss_index
@@ -65,11 +67,16 @@ def fetch_groq_answer(system_prompt, user_prompt):
         ],
         "temperature": 0.7
     }
-    response = requests.post(url, headers=headers, json=payload)
-    if response.status_code == 200:
+    try:
+        response = requests.post(url, headers=headers, json=payload)
+        response.raise_for_status()
         return response.json()["choices"][0]["message"]["content"]
-    else:
+    except requests.exceptions.RequestException as e:
+        print(f"Request failed: {e}")  # Debugging log
         return "Error: Unable to get response from Groq API."
+    except ValueError as e:
+        print(f"Error parsing Groq API response: {e}")  # Debugging log
+        return "Error: Invalid response from Groq API."
 
 def get_answer(query):
     faiss_index = build_faiss_index()
@@ -87,4 +94,5 @@ async def ask_question(query_request: QueryRequest):
         answer = get_answer(query_request.query)
         return JSONResponse(content={"answer": answer})
     except Exception as e:
+        print(f"Error in asking question: {str(e)}")  # Debugging log
         raise HTTPException(status_code=500, detail=str(e))
