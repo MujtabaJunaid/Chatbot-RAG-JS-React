@@ -5,8 +5,10 @@ from typing import List, Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from huggingface_hub import InferenceClient
+from huggingface_hub import login, InferenceClient
 from groq import Groq
+
+login(token=os.getenv("hf_api_key"))
 
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
