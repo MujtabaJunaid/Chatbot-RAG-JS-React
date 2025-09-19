@@ -6,6 +6,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import requests
+from groq import Groq
 
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
@@ -15,21 +16,23 @@ VECTOR_FILE = "vector_pages_33_to_801.pkl"
 faiss_index = None
 texts = None
 hf_api_key = None
+groq_client = None
 
 class QueryRequest(BaseModel):
     question: str
 
 def get_embedding_via_hf(text):
-    api_url = "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2"
+    url = "https://api-inference.huggingface.co/models/bert-base-uncased"
     headers = {"Authorization": f"Bearer {hf_api_key}"}
-    response = requests.post(api_url, headers=headers, json={"inputs": text, "options": {"wait_for_model": True}})
+    response = requests.post(url, headers=headers, json={"inputs": text})
     if response.status_code != 200:
         raise RuntimeError(f"Hugging Face API error: {response.status_code} - {response.text}")
-    return np.array(response.json(), dtype="float32")
+    embeddings = response.json()
+    return np.array(embeddings, dtype="float32")
 
 @app.on_event("startup")
 def startup_load():
-    global faiss_index, texts, hf_api_key
+    global faiss_index, texts, hf_api_key, groq_client
     if not os.path.exists(VECTOR_FILE):
         raise RuntimeError(f"{VECTOR_FILE} not found")
     with open(VECTOR_FILE, "rb") as f:
@@ -50,6 +53,10 @@ def startup_load():
     hf_api_key = os.getenv("hf_api_key")
     if not hf_api_key:
         raise RuntimeError("hf_api_key environment variable not set")
+    groq_api_key = os.getenv("groq_api_key")
+    if not groq_api_key:
+        raise RuntimeError("groq_api_key environment variable not set")
+    groq_client = Groq(api_key=groq_api_key)
 
 @app.get("/")
 def root():
@@ -57,12 +64,12 @@ def root():
 
 @app.get("/status/")
 def status():
-    ready = faiss_index is not None and texts is not None and hf_api_key is not None
+    ready = faiss_index is not None and texts is not None and hf_api_key is not None and groq_client is not None
     return {"ready": ready}
 
 @app.post("/ask/")
 def ask(request: QueryRequest):
-    if faiss_index is None or texts is None or hf_api_key is None:
+    if faiss_index is None or texts is None or hf_api_key is None or groq_client is None:
         raise HTTPException(status_code=503, detail="Server resources not loaded yet.")
     if not request.question or not request.question.strip():
         raise HTTPException(status_code=400, detail="Empty question provided.")
@@ -85,4 +92,26 @@ def ask(request: QueryRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to read search indices: {e}")
     context = "\n".join(hits) if hits else ""
-    return {"answer": f"Context retrieved: {context[:200]}...", "context_length": len(context)}
+    messages = [
+        {"role": "system", "content": "You are a helpful assistant. Use the provided context to answer questions."},
+        {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {request.question}"}
+    ]
+    try:
+        completion = groq_client.chat.completions.create(model="llama-3.1-8b-instant", messages=messages)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Groq chat completion failed: {e}")
+    answer_text = None
+    try:
+        choice = completion.choices[0]
+        content = getattr(choice, "message", None)
+        if content:
+            answer_text = getattr(content, "content", None)
+        else:
+            answer_text = getattr(choice, "text", None)
+        if not answer_text and isinstance(completion, dict):
+            answer_text = completion.get("choices", [{}])[0].get("message", {}).get("content")
+    except Exception:
+        pass
+    if not answer_text:
+        raise HTTPException(status_code=502, detail="Failed to parse LLM response")
+    return {"answer": answer_text}
