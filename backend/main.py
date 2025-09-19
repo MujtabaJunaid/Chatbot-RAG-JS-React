@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from huggingface_hub import InferenceClient
 from groq import Groq
-import faiss   # added import so we can cast the index
+import faiss   # only to have faiss available
 
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
@@ -48,10 +48,6 @@ def startup_load():
         raise RuntimeError(f"Vector store format invalid. Available keys: {available}")
     faiss_index = vector_store[idx_key]
     texts = vector_store[text_key]
-
-    # FIX line:
-    faiss_index = faiss.Index.cast(faiss_index)
-
     if faiss_index is None:
         raise RuntimeError("Loaded faiss index is None.")
     if texts is None or not isinstance(texts, (list, tuple)):
