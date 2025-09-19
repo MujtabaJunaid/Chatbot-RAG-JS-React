@@ -81,9 +81,7 @@ def ask(request: QueryRequest):
         raise HTTPException(status_code=502, detail=f"Embeddings API error: {e}")
     k = 3
     try:
-        distances = np.empty((1, k), dtype=np.float32)
-        indices = np.empty((1, k), dtype=np.int64)
-        faiss_index.search(q_emb, k, distances, indices)
+        distances, indices = faiss_index.search(q_emb, k)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"FAISS search failed: {e}")
     hits = []
