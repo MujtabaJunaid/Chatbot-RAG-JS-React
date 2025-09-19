@@ -8,11 +8,12 @@ from langchain.docstore.document import Document
 from langchain.text_splitter import CharacterTextSplitter as RecursiveCharacterTextSplitter
 from pypdf import PdfReader
 from groq import Groq
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = FastAPI()
-@app.get("/")
-def root():
-    return {"message": "Backend is running"}
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -45,14 +46,18 @@ def process_pdf(file_path):
     global vector_store, processing_done
     reader = PdfReader(file_path)
     text = ""
-    for page in reader.pages:
-        text += page.extract_text() or ""
+    for page_num in range(32, 36):  
+        text += reader.pages[page_num].extract_text() or ""
     splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
     chunks = splitter.split_text(text)
     docs = [Document(page_content=chunk) for chunk in chunks]
     embeddings = get_embeddings(chunks)
     vector_store = FAISS.from_embeddings(embeddings, docs)
     processing_done = True
+
+@app.get("/")
+def root():
+    return {"message": "Backend is running"}
 
 @app.post("/upload_pdf/")
 async def upload_pdf(file: UploadFile = File(...), background_tasks: BackgroundTasks = None):
