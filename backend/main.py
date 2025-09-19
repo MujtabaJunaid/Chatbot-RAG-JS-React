@@ -19,37 +19,20 @@ groq_client: Optional[Groq] = None
 class QueryRequest(BaseModel):
     question: str
 
-def extract_embedding_from_groq_response(resp):
-    try:
-        if hasattr(resp, "data") and resp.data:
-            first = resp.data[0]
-            if hasattr(first, "embedding"):
-                return list(first.embedding)
-            if isinstance(first, dict):
-                if "embedding" in first:
-                    return first["embedding"]
-                if "vector" in first:
-                    return first["vector"]
-    except Exception:
-        pass
-    try:
-        if isinstance(resp, dict):
-            d0 = resp.get("data", [])
-            if d0:
-                first = d0[0]
-                if isinstance(first, dict):
-                    if "embedding" in first:
-                        return first["embedding"]
-                    if "vector" in first:
-                        return first["vector"]
-    except Exception:
-        pass
-    try:
-        if isinstance(resp, dict) and "embedding" in resp:
-            return resp["embedding"]
-    except Exception:
-        pass
-    return None
+class EmbeddingModel:
+    def __init__(self, groq_client):
+        self.groq_client = groq_client
+    
+    def generate_embedding(self, text):
+        try:
+            response = self.groq_client.embeddings.create(
+                model="llama-3.2-1b-text-embedding",
+                input=[text],
+                encoding_format="float"
+            )
+            return response.data[0].embedding
+        except Exception as e:
+            raise RuntimeError(f"Embedding generation failed: {e}")
 
 @app.on_event("startup")
 def startup_load():
@@ -77,8 +60,8 @@ def startup_load():
     groq_client = Groq(api_key=groq_api_key)
 
 def get_embedding_via_groq(text):
-    resp = groq_client.embeddings.create(input=[text], model="text-embedding-3-small", encoding_format="float")
-    emb = extract_embedding_from_groq_response(resp)
+    model = EmbeddingModel(groq_client)
+    emb = model.generate_embedding(text)
     if emb is None:
         raise RuntimeError("Failed to extract embedding from Groq response")
     return np.array(emb, dtype="float32")
