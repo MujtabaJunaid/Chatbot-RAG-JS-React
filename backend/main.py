@@ -10,8 +10,9 @@ from pypdf import PdfReader
 from groq import Groq
 
 app = FastAPI()
-
-# CORS
+@app.get("/")
+def root():
+    return {"message": "Backend is running"}
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -20,13 +21,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Hugging Face API
 HF_API_KEY = os.getenv("hf_api_key")
 HF_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 HF_URL = f"https://api-inference.huggingface.co/pipeline/feature-extraction/{HF_MODEL}"
 HEADERS = {"Authorization": f"Bearer {HF_API_KEY}"}
 
-# Groq API
 GROQ_API_KEY = os.getenv("groq_api_key")
 groq_client = Groq(api_key=GROQ_API_KEY)
 
