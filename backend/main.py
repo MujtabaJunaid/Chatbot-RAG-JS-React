@@ -24,7 +24,11 @@ class QueryRequest(BaseModel):
 def get_embedding_via_hf(text):
     url = "https://api-inference.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2"
     headers = {"Authorization": f"Bearer {hf_api_key}"}
-    response = requests.post(url, headers=headers, json={"inputs": text, "options": {"wait_for_model": True}})
+    payload = {
+        "inputs": text,
+        "options": {"wait_for_model": True}
+    }
+    response = requests.post(url, headers=headers, json=payload)
     if response.status_code != 200:
         raise RuntimeError(f"Hugging Face API error: {response.status_code} - {response.text}")
     embeddings = response.json()
