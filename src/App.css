@@ -1,13 +1,101 @@
 body {
-  font-family: Arial, sans-serif;
-  background-color: #f5f5f5;
   margin: 0;
-  padding: 0;
-}
-
-#root {
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  background: linear-gradient(135deg, #6e8efb, #a777e3);
+  color: #333;
   display: flex;
   justify-content: center;
   align-items: center;
   height: 100vh;
+}
+
+.app-container {
+  width: 95%;
+  max-width: 600px;
+  height: 90vh;
+  background: #fff;
+  border-radius: 20px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.header {
+  text-align: center;
+  background: #6e8efb;
+  color: white;
+  padding: 15px;
+  font-size: 24px;
+  margin: 0;
+}
+
+.chat-box {
+  flex: 1;
+  padding: 15px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.message {
+  padding: 12px 15px;
+  border-radius: 15px;
+  max-width: 70%;
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+.message.user {
+  align-self: flex-end;
+  background: #6e8efb;
+  color: white;
+  border-bottom-right-radius: 0;
+}
+
+.message.bot {
+  align-self: flex-start;
+  background: #f1f1f1;
+  color: #333;
+  border-bottom-left-radius: 0;
+}
+
+.loading {
+  align-self: center;
+  font-style: italic;
+  color: #777;
+}
+
+.input-area {
+  display: flex;
+  padding: 10px;
+  background: #f9f9f9;
+  border-top: 1px solid #eee;
+}
+
+.input-area input {
+  flex: 1;
+  padding: 12px;
+  border: none;
+  outline: none;
+  border-radius: 25px;
+  margin-right: 10px;
+  font-size: 15px;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.1);
+}
+
+.input-area button {
+  background: #6e8efb;
+  border: none;
+  color: white;
+  padding: 12px 20px;
+  border-radius: 25px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: 0.3s;
+}
+
+.input-area button:hover {
+  background: #5a76e5;
 }
