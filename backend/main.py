@@ -15,9 +15,15 @@ app.add_middleware(
 )
 
 GROQ_API_KEY = os.getenv("groq_api_key")
+if not GROQ_API_KEY:
+    raise RuntimeError("GROQ_API_KEY not set")
 groq_client = Groq(api_key=GROQ_API_KEY)
 
-with open("vector_pages_33_to_801 .pkl", "rb") as f:
+vector_file = "vector_pages_33_to_801.pkl"
+if not os.path.exists(vector_file):
+    raise RuntimeError(f"{vector_file} not found")
+
+with open(vector_file, "rb") as f:
     vector_store = pickle.load(f)
 
 class QueryRequest(BaseModel):
