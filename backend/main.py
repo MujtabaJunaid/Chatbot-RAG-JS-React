@@ -23,7 +23,7 @@ vector_file = "vector_page32.pkl"
 if not os.path.exists(vector_file):
     raise RuntimeError(f"{vector_file} not found")
 
-with open(vector_file, "rb") as f:
+with open("vector_page32.pkl", "rb") as f:
     vector_store = pickle.load(f)
 
 class QueryRequest(BaseModel):
