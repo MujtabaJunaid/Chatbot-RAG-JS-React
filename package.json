@@ -21,7 +21,7 @@
     "predeploy": "npm run build",
     "deploy": "gh-pages -d build"
   },
-  "homepage": "https://MujtabaJunaid.github.io/chatbot-rag-react",
+  "homepage": "https://MujtabaJunaid.github.io/Chatbot-RAG-JS-React",
   "browserslist": {
     "production": [
       ">0.2%",
