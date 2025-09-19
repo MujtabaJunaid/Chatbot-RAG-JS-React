@@ -14,7 +14,6 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, 
 
 VECTOR_FILE = "vector_pages_33_to_801.pkl"
 
-# Change these to not load the FAISS index directly
 local_faiss_index = None
 texts = None
 embeddings = None
@@ -43,18 +42,15 @@ def startup_load():
     with open(VECTOR_FILE, "rb") as f:
         vector_store = pickle.load(f)
     
-    # Load the embeddings and texts, but NOT the FAISS index
     texts = vector_store['texts']
     embeddings = vector_store['embeddings']
     
-    # Create a new FAISS index locally
-    dimension = embeddings.shape[1]  # Should be 384
+    dimension = embeddings.shape[1] 
     local_faiss_index = faiss.IndexFlatL2(dimension)
     local_faiss_index.add(embeddings.astype('float32'))
     
     print(f"Created local FAISS index with {local_faiss_index.ntotal} vectors of dimension {local_faiss_index.d}")
     
-    # Setup clients
     hf_api_key = os.getenv("hf_api_key")
     if not hf_api_key:
         raise RuntimeError("hf_api_key environment variable not set")
@@ -89,7 +85,7 @@ def ask(request: QueryRequest):
     
     k = 3
     try:
-        # Use the locally created index - this will work!
+      
         distances, indices = local_faiss_index.search(q_emb, k)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"FAISS search failed: {e}")
