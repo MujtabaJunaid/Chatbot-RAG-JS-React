@@ -24,13 +24,10 @@ class QueryRequest(BaseModel):
 def get_embedding_via_hf(text):
     try:
         result = hf_client.sentence_similarity(
-            {
-                "source_sentence": text,
-                "sentences": [text]
-            },
-            model="sentence-transformers/all-MiniLM-L6-v2",
+            text,
+            other_sentences=[text]
         )
-        return np.array(result, dtype="float32")
+        return np.array([result[0]], dtype="float32")
     except Exception as e:
         raise RuntimeError(f"Hugging Face API error: {e}")
 
@@ -57,7 +54,7 @@ def startup_load():
     hf_api_key = os.getenv("hf_api_key")
     if not hf_api_key:
         raise RuntimeError("hf_api_key environment variable not set")
-    hf_client = InferenceClient()
+    hf_client = InferenceClient(api_key=hf_api_key)
     groq_api_key = os.getenv("groq_api_key")
     if not groq_api_key:
         raise RuntimeError("groq_api_key environment variable not set")
