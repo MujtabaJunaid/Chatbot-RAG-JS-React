@@ -31,18 +31,6 @@ def get_embedding_via_hf(text: str):
     except Exception as e:
         raise RuntimeError(f"Hugging Face API error: {e}")
 
-def faiss_search(index, query_embedding, k):
-    try:
-        return index.search(query_embedding, k)
-    except TypeError:
-        try:
-            distances = np.zeros((query_embedding.shape[0], k), dtype=np.float32)
-            indices = np.zeros((query_embedding.shape[0], k), dtype=np.int64)
-            index.search(query_embedding, k, distances, indices)
-            return distances, indices
-        except Exception as e:
-            raise RuntimeError(f"FAISS search failed with both methods: {e}")
-
 @app.on_event("startup")
 def startup_load():
     global faiss_index, texts, hf_client, groq_client
@@ -66,10 +54,7 @@ def startup_load():
     hf_api_key = os.getenv("hf_api_key")
     if not hf_api_key:
         raise RuntimeError("hf_api_key environment variable not set")
-    hf_client = InferenceClient(
-        provider="hf-inference",
-        api_key=hf_api_key,
-    )
+    hf_client = InferenceClient(api_key=hf_api_key)
     groq_api_key = os.getenv("groq_api_key")
     if not groq_api_key:
         raise RuntimeError("groq_api_key environment variable not set")
@@ -91,23 +76,27 @@ def ask(request: QueryRequest):
     if not request.question or not request.question.strip():
         raise HTTPException(status_code=400, detail="Empty question provided.")
     try:
-        q_emb = get_embedding_via_hf(request.question).reshape(1, -1)
+        q_emb = get_embedding_via_hf(request.question)
+        q_emb = q_emb.reshape(1, -1).astype("float32")
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Embeddings API error: {e}")
+    
     k = 3
     try:
-        distances, indices = faiss_search(faiss_index, q_emb, k)
+        # Use the exact same syntax as your working example
+        D, I = faiss_index.search(q_emb, k)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"FAISS search failed: {e}")
+    
     hits = []
     try:
-        for idx in indices[0]:
-            if idx == -1:
+        for idx in I[0]:
+            if idx < 0 or idx >= len(texts):
                 continue
-            if 0 <= int(idx) < len(texts):
-                hits.append(texts[int(idx)])
+            hits.append(texts[int(idx)])
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to read search indices: {e}")
+    
     context = "\n".join(hits) if hits else ""
     messages = [
         {"role": "system", "content": "You are a helpful assistant. Use the provided context to answer questions."},
