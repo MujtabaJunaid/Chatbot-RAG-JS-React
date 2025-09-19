@@ -20,7 +20,7 @@ app.add_middleware(
 
 # Config
 VECTOR_FILE = "vector_pages_33_to_801.pkl"
-GROQ_API_KEY_ENV = "groq_api_key"
+GROQ_API_KEY_ENV = os.getenv("groq_api_key")
 
 # Globals to be loaded on startup
 faiss_index = None
