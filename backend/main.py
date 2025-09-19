@@ -25,7 +25,7 @@ class QueryRequest(BaseModel):
 
 FAISS_INDEX_PATH = "faiss_index"
 PDF_FILE_PATH = "Income Tax Ordinance.pdf"
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+GROQ_API_KEY = os.environ.get("groq_api_key")
 
 def load_pdf_to_text(pdf_file_path):
     loader = PyPDFLoader(pdf_file_path)
