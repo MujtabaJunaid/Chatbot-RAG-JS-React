@@ -67,7 +67,7 @@ def load_resources():
         raise RuntimeError("Loaded texts/docs is missing or not a list/tuple.")
 
     # Initialize Groq client if API key present
-    groq_api_key = os.getenv(GROQ_API_KEY_ENV)
+    groq_api_key = os.getenv("groq_api_key")
     if not groq_api_key:
         # don't raise at import time for easier local dev; raise here so server fails fast on startup
         raise RuntimeError(f"{GROQ_API_KEY_ENV} environment variable not set")
