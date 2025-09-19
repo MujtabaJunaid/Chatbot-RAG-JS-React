@@ -1,12 +1,15 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import "./App.css";
 
 function App() {
   const [file, setFile] = useState(null);
-  const [uploaded, setUploaded] = useState(false);
-  const [query, setQuery] = useState("");
-  const [messages, setMessages] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [ready, setReady] = useState(false);
+  const [question, setQuestion] = useState("");
+  const [answer, setAnswer] = useState("");
+  const [loadingAnswer, setLoadingAnswer] = useState(false);
+
+  const backendUrl = "https://chatbot-rag-react-js-8870a40a0709.herokuapp.com";
 
   const handleFileChange = (e) => {
     setFile(e.target.files[0]);
@@ -14,77 +17,73 @@ function App() {
 
   const handleUpload = async () => {
     if (!file) return;
+    setUploading(true);
+    setReady(false);
     const formData = new FormData();
     formData.append("file", file);
-    try {
-      const response = await fetch("https://chatbot-rag-react-js-8870a40a0709.herokuapp.com/upload_pdf/", {
-        method: "POST",
-        body: formData,
-      });
-      const data = await response.json();
-      if (response.ok) {
-        setUploaded(true);
-        setMessages([{ role: "bot", text: data.message }]);
-      } else {
-        setMessages([{ role: "bot", text: data.detail || "Upload failed" }]);
-      }
-    } catch {
-      setMessages([{ role: "bot", text: "Error: Unable to upload file." }]);
-    }
+    await fetch(`${backendUrl}/upload_pdf/`, {
+      method: "POST",
+      body: formData,
+    });
+    setUploading(false);
   };
 
-  const handleSend = async () => {
-    if (!query.trim() || !uploaded) return;
-    const userMessage = { role: "user", text: query };
-    setMessages((prev) => [...prev, userMessage]);
-    setQuery("");
-    setLoading(true);
-    try {
-      const response = await fetch("https://chatbot-rag-react-js-8870a40a0709.herokuapp.com/ask/", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: query }),
-      });
-      const data = await response.json();
-      const botMessage = { role: "bot", text: data.answer || "No response" };
-      setMessages((prev) => [...prev, botMessage]);
-    } catch {
-      const botMessage = { role: "bot", text: "Error: Unable to connect to backend." };
-      setMessages((prev) => [...prev, botMessage]);
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    let interval;
+    if (uploading === false && file) {
+      interval = setInterval(async () => {
+        const res = await fetch(`${backendUrl}/status/`);
+        const data = await res.json();
+        if (data.ready) {
+          setReady(true);
+          clearInterval(interval);
+        }
+      }, 3000);
     }
+    return () => clearInterval(interval);
+  }, [uploading, file]);
+
+  const handleAsk = async () => {
+    if (!question) return;
+    setLoadingAnswer(true);
+    const res = await fetch(`${backendUrl}/ask/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question }),
+    });
+    const data = await res.json();
+    setAnswer(data.answer);
+    setLoadingAnswer(false);
   };
 
   return (
-    <div className="app-container">
-      <h1 className="header">AI PDF Chatbot</h1>
+    <div className="app">
+      <h1>Income Tax Ordinance Chatbot</h1>
       <div className="upload-section">
         <input type="file" accept="application/pdf" onChange={handleFileChange} />
-        <button onClick={handleUpload}>Upload PDF</button>
+        <button onClick={handleUpload} disabled={uploading}>
+          {uploading ? "Uploading..." : "Upload PDF"}
+        </button>
       </div>
-      <div className="chat-box">
-        {messages.map((msg, index) => (
-          <div
-            key={index}
-            className={`message ${msg.role === "user" ? "user" : "bot"}`}
-          >
-            {msg.text}
-          </div>
-        ))}
-        {loading && <div className="loading">Thinking...</div>}
-      </div>
-      <div className="input-area">
-        <input
-          type="text"
-          placeholder="Ask a question..."
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyPress={(e) => e.key === "Enter" && handleSend()}
-          disabled={!uploaded}
-        />
-        <button onClick={handleSend} disabled={!uploaded}>Send</button>
-      </div>
+      {!ready && file && !uploading && <p>Processing PDF... Please wait</p>}
+      {ready && (
+        <div className="chat-section">
+          <textarea
+            placeholder="Ask a question"
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+          />
+          <button onClick={handleAsk} disabled={loadingAnswer}>
+            {loadingAnswer ? "Getting Answer..." : "Ask"}
+          </button>
+          {answer && (
+            <div className="answer-box">
+              <h3>Answer</h3>
+              <p>{answer}</p>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
