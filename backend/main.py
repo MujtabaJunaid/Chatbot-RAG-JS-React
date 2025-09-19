@@ -9,6 +9,7 @@ from langchain.document_loaders import PyPDFLoader
 import faiss
 import requests
 from pydantic import BaseModel
+from groq import Groq
 
 app = FastAPI()
 
@@ -19,6 +20,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+client = Groq(api_key=os.environ.get("groq_api_key"))
+
 
 class QueryRequest(BaseModel):
     query: str
