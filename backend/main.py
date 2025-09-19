@@ -17,7 +17,7 @@ app.add_middleware(
 GROQ_API_KEY = os.getenv("groq_api_key")
 groq_client = Groq(api_key=GROQ_API_KEY)
 
-with open("vector_page32.pkl", "rb") as f:
+with open("vector_pages_33_to_801 .pkl", "rb") as f:
     vector_store = pickle.load(f)
 
 class QueryRequest(BaseModel):
