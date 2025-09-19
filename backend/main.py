@@ -8,10 +8,11 @@ from langchain.docstore.document import Document
 from langchain.text_splitter import CharacterTextSplitter as RecursiveCharacterTextSplitter
 from pypdf import PdfReader
 from groq import Groq
-from dotenv import load_dotenv
-
 
 app = FastAPI()
+@app.get("/")
+def root():
+    return {"message": "Backend is running"}
 
 app.add_middleware(
     CORSMiddleware,
@@ -44,19 +45,15 @@ def get_embeddings(texts):
 def process_pdf(file_path):
     global vector_store, processing_done
     reader = PdfReader(file_path)
-    text = ""
-    for page_num in range(32, 36):  
-        text += reader.pages[page_num].extract_text() or ""
+    if len(reader.pages) < 33:
+        raise HTTPException(status_code=400, detail="PDF does not have page 32")
+    text = reader.pages[32].extract_text() or ""
     splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
     chunks = splitter.split_text(text)
     docs = [Document(page_content=chunk) for chunk in chunks]
     embeddings = get_embeddings(chunks)
     vector_store = FAISS.from_embeddings(embeddings, docs)
     processing_done = True
-
-@app.get("/")
-def root():
-    return {"message": "Backend is running"}
 
 @app.post("/upload_pdf/")
 async def upload_pdf(file: UploadFile = File(...), background_tasks: BackgroundTasks = None):
@@ -68,7 +65,7 @@ async def upload_pdf(file: UploadFile = File(...), background_tasks: BackgroundT
     with open(file_path, "wb") as f:
         f.write(await file.read())
     background_tasks.add_task(process_pdf, file_path)
-    return {"message": "PDF received, processing started"}
+    return {"message": "PDF received, processing page 32"}
 
 @app.get("/status/")
 async def check_status():
