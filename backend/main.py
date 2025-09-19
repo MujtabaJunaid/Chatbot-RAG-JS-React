@@ -1,6 +1,7 @@
 import os
 import pickle
 import numpy as np
+import faiss
 from typing import List, Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,8 +14,10 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, 
 
 VECTOR_FILE = "vector_pages_33_to_801.pkl"
 
-faiss_index = None
+# Change these to not load the FAISS index directly
+local_faiss_index = None
 texts = None
+embeddings = None
 hf_client = None
 groq_client = None
 
@@ -33,28 +36,30 @@ def get_embedding_via_hf(text: str):
 
 @app.on_event("startup")
 def startup_load():
-    global faiss_index, texts, hf_client, groq_client
+    global local_faiss_index, texts, embeddings, hf_client, groq_client
     if not os.path.exists(VECTOR_FILE):
         raise RuntimeError(f"{VECTOR_FILE} not found")
+    
     with open(VECTOR_FILE, "rb") as f:
         vector_store = pickle.load(f)
-    possible_index_keys = ["index", "faiss_index", "idx"]
-    possible_text_keys = ["docs", "texts", "documents"]
-    idx_key = next((k for k in possible_index_keys if k in vector_store), None)
-    text_key = next((k for k in possible_text_keys if k in vector_store), None)
-    if idx_key is None or text_key is None:
-        available = list(vector_store.keys()) if isinstance(vector_store, dict) else []
-        raise RuntimeError(f"Vector store format invalid. Available keys: {available}")
-    faiss_index = vector_store[idx_key]
-    texts = vector_store[text_key]
-    if faiss_index is None:
-        raise RuntimeError("Loaded faiss index is None.")
-    if texts is None or not isinstance(texts, (list, tuple)):
-        raise RuntimeError("Loaded texts/docs is missing or not a list/tuple.")
+    
+    # Load the embeddings and texts, but NOT the FAISS index
+    texts = vector_store['texts']
+    embeddings = vector_store['embeddings']
+    
+    # Create a new FAISS index locally
+    dimension = embeddings.shape[1]  # Should be 384
+    local_faiss_index = faiss.IndexFlatL2(dimension)
+    local_faiss_index.add(embeddings.astype('float32'))
+    
+    print(f"Created local FAISS index with {local_faiss_index.ntotal} vectors of dimension {local_faiss_index.d}")
+    
+    # Setup clients
     hf_api_key = os.getenv("hf_api_key")
     if not hf_api_key:
         raise RuntimeError("hf_api_key environment variable not set")
     hf_client = InferenceClient(api_key=hf_api_key)
+    
     groq_api_key = os.getenv("groq_api_key")
     if not groq_api_key:
         raise RuntimeError("groq_api_key environment variable not set")
@@ -66,34 +71,34 @@ def root():
 
 @app.get("/status/")
 def status():
-    ready = faiss_index is not None and texts is not None and hf_client is not None and groq_client is not None
+    ready = local_faiss_index is not None and texts is not None and hf_client is not None and groq_client is not None
     return {"ready": ready}
 
 @app.post("/ask/")
 def ask(request: QueryRequest):
-    if faiss_index is None or texts is None or hf_client is None or groq_client is None:
+    if local_faiss_index is None or texts is None or hf_client is None or groq_client is None:
         raise HTTPException(status_code=503, detail="Server resources not loaded yet.")
+    
     if not request.question or not request.question.strip():
         raise HTTPException(status_code=400, detail="Empty question provided.")
+    
     try:
-        q_emb = get_embedding_via_hf(request.question)
-        q_emb = q_emb.reshape(1, -1).astype("float32")
+        q_emb = get_embedding_via_hf(request.question).reshape(1, -1).astype("float32")
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Embeddings API error: {e}")
     
     k = 3
     try:
-        # Use the exact same syntax as your working example
-        D, I = faiss_index.search(q_emb, k)
+        # Use the locally created index - this will work!
+        distances, indices = local_faiss_index.search(q_emb, k)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"FAISS search failed: {e}")
     
     hits = []
     try:
-        for idx in I[0]:
-            if idx < 0 or idx >= len(texts):
-                continue
-            hits.append(texts[int(idx)])
+        for idx in indices[0]:
+            if 0 <= idx < len(texts):
+                hits.append(texts[int(idx)])
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to read search indices: {e}")
     
@@ -102,10 +107,12 @@ def ask(request: QueryRequest):
         {"role": "system", "content": "You are a helpful assistant. Use the provided context to answer questions."},
         {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {request.question}"}
     ]
+    
     try:
         completion = groq_client.chat.completions.create(model="llama-3.1-8b-instant", messages=messages)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Groq chat completion failed: {e}")
+    
     answer_text = None
     try:
         choice = completion.choices[0]
@@ -118,6 +125,8 @@ def ask(request: QueryRequest):
             answer_text = completion.get("choices", [{}])[0].get("message", {}).get("content")
     except Exception:
         pass
+    
     if not answer_text:
         raise HTTPException(status_code=502, detail="Failed to parse LLM response")
+    
     return {"answer": answer_text}
