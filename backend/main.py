@@ -10,7 +10,6 @@ from pypdf import PdfReader
 from groq import Groq
 from dotenv import load_dotenv
 
-load_dotenv()
 
 app = FastAPI()
 
