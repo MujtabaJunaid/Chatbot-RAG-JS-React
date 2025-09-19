@@ -2,7 +2,7 @@ fastapi==0.68.0
 uvicorn==0.15.0
 langchain==0.0.40
 faiss-cpu==1.7.3
-pydantic==1.9.0
+pydantic==1.10.12
 requests==2.26.0
 python-multipart==0.0.5
 groq==0.31.1
