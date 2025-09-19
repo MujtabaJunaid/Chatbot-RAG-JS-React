@@ -19,7 +19,7 @@ if not GROQ_API_KEY:
     raise RuntimeError("GROQ_API_KEY not set")
 groq_client = Groq(api_key=GROQ_API_KEY)
 
-vector_file = "vector_pages_33_to_801.pkl"
+vector_file = "vector_page32.pkl"
 if not os.path.exists(vector_file):
     raise RuntimeError(f"{vector_file} not found")
 
