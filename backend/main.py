@@ -81,14 +81,39 @@ def ask(request: QueryRequest):
         raise HTTPException(status_code=502, detail=f"Embeddings API error: {e}")
     k = 3
     try:
-        distances = np.empty((1, k), dtype=np.float32)
-        labels = np.empty((1, k), dtype=np.int64)
-        faiss_index.search(q_emb, k, distances, labels)
+        # Debug the FAISS index method signature
+        print(f"FAISS index type: {type(faiss_index)}")
+        print(f"Available methods: {[method for method in dir(faiss_index) if not method.startswith('_')]}")
+        
+        # Try the modern approach first
+        try:
+            distances, indices = faiss_index.search(q_emb, k)
+            print("Modern syntax worked")
+        except Exception as modern_error:
+            print(f"Modern failed: {modern_error}")
+            # Try legacy approach
+            try:
+                distances = np.empty((1, k), dtype=np.float32)
+                indices = np.empty((1, k), dtype=np.int64)
+                faiss_index.search(q_emb, k, distances, indices)
+                print("Legacy syntax worked")
+            except Exception as legacy_error:
+                print(f"Legacy failed: {legacy_error}")
+                # Try with ctypes
+                try:
+                    distances = np.empty((1, k), dtype=np.float32)
+                    indices = np.empty((1, k), dtype=np.int64)
+                    faiss_index.search(q_emb, k, distances.ctypes.data, indices.ctypes.data)
+                    print("Ctypes syntax worked")
+                except Exception as ctypes_error:
+                    raise HTTPException(status_code=500, detail=f"All FAISS approaches failed. Modern: {modern_error}, Legacy: {legacy_error}, Ctypes: {ctypes_error}")
+                    
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"FAISS search failed: {e}")
+    
     hits = []
     try:
-        for idx in labels[0]:
+        for idx in indices[0]:
             if idx == -1:
                 continue
             if 0 <= int(idx) < len(texts):
@@ -109,7 +134,7 @@ def ask(request: QueryRequest):
         choice = completion.choices[0]
         content = getattr(choice, "message", None)
         if content:
-            answer_text = getattr(content, "content", None)
+            answer_text = getattr(content, "content, None)
         else:
             answer_text = getattr(choice, "text", None)
         if not answer_text and isinstance(completion, dict):
