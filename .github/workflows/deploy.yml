@@ -3,11 +3,12 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches:
-      - master
+      - main  # Trigger action only when pushing to 'main' branch
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2
@@ -15,13 +16,21 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v2
         with:
-          node-version: '16'  
+          node-version: '18'  # Use the Node.js version you're working with
 
       - name: Install dependencies
         run: npm install
 
       - name: Build the app
-        run: npm run build
+        run: |
+          echo "Setting NODE_OPTIONS to bypass OpenSSL issue"
+          export NODE_OPTIONS=--openssl-legacy-provider
+          npm run build
+
+      - name: Set Git user identity
+        run: |
+          git config --global user.name "MujtabaJunaid"  
+          git config --global user.email "mujtabajunaid412@gmail.com" 
 
       - name: Deploy to GitHub Pages
         run: npm run deploy
