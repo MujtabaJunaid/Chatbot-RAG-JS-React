@@ -72,7 +72,7 @@ def startup_load():
         raise RuntimeError("Loaded faiss index is None.")
     if texts is None or not isinstance(texts, (list, tuple)):
         raise RuntimeError("Loaded texts/docs is missing or not a list/tuple.")
-    groq_api_key = os.getenv(groq_api_key)
+    groq_api_key = os.getenv("groq_api_key")
     if not groq_api_key:
         raise RuntimeError(f"{GROQ_API_KEY_ENV} environment variable not set")
     groq_client = Groq(api_key=groq_api_key)
