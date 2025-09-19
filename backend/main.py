@@ -58,7 +58,7 @@ def startup_load():
     if not hf_api_key:
         raise RuntimeError("hf_api_key environment variable not set")
     hf_client = InferenceClient(
-        provider="hf-inference",
+        
         api_key=hf_api_key,
     )
     groq_api_key = os.getenv("groq_api_key")
