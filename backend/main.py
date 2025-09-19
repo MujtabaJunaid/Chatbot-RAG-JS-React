@@ -5,7 +5,7 @@ from typing import List, Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from groq import Groq
+import requests
 
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
@@ -14,29 +14,22 @@ VECTOR_FILE = "vector_pages_33_to_801.pkl"
 
 faiss_index = None
 texts = None
-groq_client: Optional[Groq] = None
+hf_api_key = None
 
 class QueryRequest(BaseModel):
     question: str
 
-class EmbeddingModel:
-    def __init__(self, groq_client):
-        self.groq_client = groq_client
-    
-    def generate_embedding(self, text):
-        try:
-            response = self.groq_client.embeddings.create(
-                model="llama-3.2-1b-text-embedding",
-                input=[text],
-                encoding_format="float"
-            )
-            return response.data[0].embedding
-        except Exception as e:
-            raise RuntimeError(f"Embedding generation failed: {e}")
+def get_embedding_via_hf(text):
+    api_url = "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2"
+    headers = {"Authorization": f"Bearer {hf_api_key}"}
+    response = requests.post(api_url, headers=headers, json={"inputs": text, "options": {"wait_for_model": True}})
+    if response.status_code != 200:
+        raise RuntimeError(f"Hugging Face API error: {response.status_code} - {response.text}")
+    return np.array(response.json(), dtype="float32")
 
 @app.on_event("startup")
 def startup_load():
-    global faiss_index, texts, groq_client
+    global faiss_index, texts, hf_api_key
     if not os.path.exists(VECTOR_FILE):
         raise RuntimeError(f"{VECTOR_FILE} not found")
     with open(VECTOR_FILE, "rb") as f:
@@ -54,17 +47,9 @@ def startup_load():
         raise RuntimeError("Loaded faiss index is None.")
     if texts is None or not isinstance(texts, (list, tuple)):
         raise RuntimeError("Loaded texts/docs is missing or not a list/tuple.")
-    groq_api_key = os.getenv("groq_api_key")
-    if not groq_api_key:
-        raise RuntimeError("groq_api_key environment variable not set")
-    groq_client = Groq(api_key=groq_api_key)
-
-def get_embedding_via_groq(text):
-    model = EmbeddingModel(groq_client)
-    emb = model.generate_embedding(text)
-    if emb is None:
-        raise RuntimeError("Failed to extract embedding from Groq response")
-    return np.array(emb, dtype="float32")
+    hf_api_key = os.getenv("hf_api_key")
+    if not hf_api_key:
+        raise RuntimeError("hf_api_key environment variable not set")
 
 @app.get("/")
 def root():
@@ -72,17 +57,17 @@ def root():
 
 @app.get("/status/")
 def status():
-    ready = faiss_index is not None and texts is not None and groq_client is not None
+    ready = faiss_index is not None and texts is not None and hf_api_key is not None
     return {"ready": ready}
 
 @app.post("/ask/")
 def ask(request: QueryRequest):
-    if faiss_index is None or texts is None or groq_client is None:
+    if faiss_index is None or texts is None or hf_api_key is None:
         raise HTTPException(status_code=503, detail="Server resources not loaded yet.")
     if not request.question or not request.question.strip():
         raise HTTPException(status_code=400, detail="Empty question provided.")
     try:
-        q_emb = get_embedding_via_groq(request.question).reshape(1, -1)
+        q_emb = get_embedding_via_hf(request.question).reshape(1, -1)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Embeddings API error: {e}")
     k = 3
@@ -100,26 +85,4 @@ def ask(request: QueryRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to read search indices: {e}")
     context = "\n".join(hits) if hits else ""
-    messages = [
-        {"role": "system", "content": "You are a helpful assistant. Use the provided context to answer questions."},
-        {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {request.question}"}
-    ]
-    try:
-        completion = groq_client.chat.completions.create(model="llama-3.1-8b-instant", messages=messages)
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Groq chat completion failed: {e}")
-    answer_text = None
-    try:
-        choice = completion.choices[0]
-        content = getattr(choice, "message", None)
-        if content:
-            answer_text = getattr(content, "content", None)
-        else:
-            answer_text = getattr(choice, "text", None)
-        if not answer_text and isinstance(completion, dict):
-            answer_text = completion.get("choices", [{}])[0].get("message", {}).get("content")
-    except Exception:
-        pass
-    if not answer_text:
-        raise HTTPException(status_code=502, detail="Failed to parse LLM response")
-    return {"answer": answer_text}
+    return {"answer": f"Context retrieved: {context[:200]}...", "context_length": len(context)}
