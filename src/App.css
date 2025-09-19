@@ -2,7 +2,6 @@ body {
   margin: 0;
   font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
   background: linear-gradient(135deg, #6e8efb, #a777e3);
-  color: #333;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -28,6 +27,35 @@ body {
   padding: 15px;
   font-size: 24px;
   margin: 0;
+}
+
+.upload-section {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  background: #f9f9f9;
+  border-bottom: 1px solid #eee;
+}
+
+.upload-section input {
+  flex: 1;
+}
+
+.upload-section button {
+  background: #6e8efb;
+  border: none;
+  color: white;
+  padding: 8px 16px;
+  border-radius: 25px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: 0.3s;
+}
+
+.upload-section button:hover {
+  background: #5a76e5;
 }
 
 .chat-box {
@@ -98,4 +126,10 @@ body {
 
 .input-area button:hover {
   background: #5a76e5;
+}
+
+.input-area button:disabled,
+.upload-section button:disabled {
+  background: #ccc;
+  cursor: not-allowed;
 }
