@@ -11,7 +11,6 @@ app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 VECTOR_FILE = "vector_pages_33_to_801.pkl"
-GROQ_API_KEY_ENV = os.getenv("groq_api_key")
 
 faiss_index = None
 texts = None
@@ -74,11 +73,11 @@ def startup_load():
         raise RuntimeError("Loaded texts/docs is missing or not a list/tuple.")
     groq_api_key = os.getenv("groq_api_key")
     if not groq_api_key:
-        raise RuntimeError(f"{GROQ_API_KEY_ENV} environment variable not set")
+        raise RuntimeError("groq_api_key environment variable not set")
     groq_client = Groq(api_key=groq_api_key)
 
 def get_embedding_via_groq(text):
-    resp = groq_client.embeddings.create(input=[text], model="nomic-embed-text-v1.5", encoding_format="float")
+    resp = groq_client.embeddings.create(input=[text], model="text-embedding-3-small", encoding_format="float")
     emb = extract_embedding_from_groq_response(resp)
     if emb is None:
         raise RuntimeError("Failed to extract embedding from Groq response")
